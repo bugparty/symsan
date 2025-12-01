@@ -725,6 +725,11 @@ int Z3AstParser::parse_gep(dfsan_label ptr_label, uptr ptr, dfsan_label index_la
   return -1;
 }
 
+// build_trace_task:
+//   (a) Exploration-style tasks use add_nested=true to pull branch_deps_ gathered during
+//       the current concrete run.
+//   (b) Model-trace evaluation uses add_nested=false to avoid reusing stale branch_deps_
+//       from previous runs when checking hypothetical traces.
 int Z3AstParser::build_trace_task(const std::vector<trace_cond> &conds,
                                   bool add_nested, uint64_t &task_id) {
   try {

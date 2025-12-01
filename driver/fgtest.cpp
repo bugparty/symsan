@@ -471,7 +471,8 @@ evaluate_model_traces(const std::vector<ModelTrace> &traces) {
     row.provided_steps = conds.size();
 
     uint64_t task_id = 0;
-    bool build_ok = (__z3_parser->build_trace_task(conds, true, task_id) == 0);
+    // When evaluating model traces, avoid nested deps recorded from the last concrete run.
+    bool build_ok = (__z3_parser->build_trace_task(conds, /*add_nested=*/false, task_id) == 0);
     if (!build_ok) {
       row.solver_unknown = true;
       row.reward = compute_reward(t, false, true, row.metrics);
@@ -513,6 +514,8 @@ int main(int argc, char* const argv[]) {
   }
 
   reward_mode = true;
+  // Reward mode runs exploration first (nested constraints enabled) then scores hypothetical
+  // model traces with nested constraints disabled to avoid reusing stale branch dependencies.
   branch_meta_path = argv[3];
   traces_path = argv[4];
   reward_output_path = argv[5];

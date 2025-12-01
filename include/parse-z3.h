@@ -33,8 +33,11 @@ public:
                 int64_t current_offset, bool enum_index,
                 std::vector<uint64_t> &tasks) override;
 
-  // Toggle strict value filtering (used to guard against malformed AST).
-  // For hypothetical trace checking across multiple runs, this should be false.
+  // strict_value_filtering_:
+  //   When true, we enforce that the cached concrete value for a label matches the
+  //   requested branch direction. This guards against malformed AST during exploration.
+  //   When evaluating hypothetical traces collected across runs, set this to false so we
+  //   do not reject combinations that were never concretely executed together.
   void set_strict_value_filtering(bool v) { strict_value_filtering_ = v; }
 
   // Build a task from a list of branch decisions (label, is_true).
