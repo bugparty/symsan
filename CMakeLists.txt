@@ -4,6 +4,10 @@ project(symsan VERSION 1.2.2 LANGUAGES C CXX ASM)
 
 find_package(LLVM 14 REQUIRED CONFIG)
 
+option(SYMSAN_CTWM_ENABLE_INDEX "Enable CTWM index collection" ON)
+option(SYMSAN_CTWM_ENABLE_BB_TRACE
+       "Enable CTWM basic block trace instrumentation" OFF)
+
 if (LLVM_FOUND)
     message(STATUS "LLVM_VERSION_MAJOR: ${LLVM_VERSION_MAJOR}")
     message(STATUS "LLVM_VERSION_MINOR: ${LLVM_VERSION_MINOR}")
@@ -25,6 +29,18 @@ endif()
 
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
+
+if (SYMSAN_CTWM_ENABLE_INDEX)
+    add_definitions(-DSYMSAN_CTWM_ENABLE_INDEX=1)
+else()
+    add_definitions(-DSYMSAN_CTWM_ENABLE_INDEX=0)
+endif()
+
+if (SYMSAN_CTWM_ENABLE_BB_TRACE)
+    add_definitions(-DSYMSAN_CTWM_ENABLE_BB_TRACE=1)
+else()
+    add_definitions(-DSYMSAN_CTWM_ENABLE_BB_TRACE=0)
+endif()
 
 include_directories(include)
 

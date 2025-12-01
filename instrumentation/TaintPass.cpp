@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CTWMIndexPass.h"
 //#include "defs.h"
 #include "version.h"
 
@@ -3053,12 +3054,14 @@ llvmGetPassPluginInfo() {
             PB.registerOptimizerLastEPCallback(
                 [](ModulePassManager &MPM, OptimizationLevel OL) {
                   MPM.addPass(TaintPass());
+                  MPM.addPass(symsan::CTWMIndexPass());
                 });
             PB.registerPipelineParsingCallback(
                 [](StringRef Name, ModulePassManager &MPM,
                    ArrayRef<PassBuilder::PipelineElement>) {
                   if (Name == "taint") {
                     MPM.addPass(TaintPass());
+                    MPM.addPass(symsan::CTWMIndexPass());
                     return true;
                   }
                   return false;

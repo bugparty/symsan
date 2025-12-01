@@ -7,7 +7,8 @@ set(DFSAN_RTL_SOURCES
   dfsan_interceptors.cpp
   taint_allocator.cpp
   union_util.cpp
-  union_hashtable.cpp)
+  union_hashtable.cpp
+  ctwm_trace.c)
 
 set(DFSAN_RTL_HEADERS
   dfsan.h

@@ -84,6 +84,31 @@ $ lit tests
 
 * `KO_DONT_OPTIMIZE` don't override the optimization level to `O3`.
 
+### CTWM Indexing & Trace
+
+SymSan can emit CTWM-friendly metadata and runtime traces. Configure these
+features at CMake time or per compilation:
+
+* `SYMSAN_CTWM_ENABLE_INDEX` (default `ON`) builds the LLVM
+  `CTWMIndexPass`, which records basic-block IDs and the SymSan branch IDs found
+  by `__taint_trace_cond`. Each compile produces `ctwm_index.json` beside the
+  compiler’s working directory. Override the output path with
+  `KO_CTWM_INDEX_PATH=/tmp/foo.json`.
+* `SYMSAN_CTWM_ENABLE_BB_TRACE` (default `OFF`) injects calls to
+  `__ctwm_trace_bb` on every basic block. Per-build overrides are available via
+  `KO_CTWM_ENABLE_BB_TRACE` and `KO_CTWM_DISABLE_BB_TRACE`.
+* Use `KO_CTWM_ENABLE_INDEX` / `KO_CTWM_DISABLE_INDEX` when you need to toggle
+  the index pass without reconfiguring CMake.
+* Runtime traces are written by the new `ctwm_trace` runtime component. Set
+  `SYMSAN_CTWM_TRACE_PATH=/tmp/trace.bin` (defaults to `ctwm_trace.log`) before
+  running the instrumented binary. The log is a binary stream of `int32_t`
+  basic-block IDs and aligns with the IDs stored in the JSON index.
+* When experimenting from the build tree, `ko-clang` automatically prefers the
+  freshly built `instrumentation/TaintPass.so`, so you don’t need to run
+  `make install` just to regenerate `ctwm_index.json`.
+* For diagnostics you can export `SYMSAN_CTWM_DEBUG=1` to have the pass report
+  where it writes the index and whether trace hooks were injected.
+
 ### Hybrid Fuzzing
 
 SymSan needs a driver to perform hybrid fuzzing, like [FastGen](https://github.com/R-Fuzz/fastgen).

@@ -107,7 +107,14 @@ static void find_obj(const char *argv0) {
     dir = ck_strdup(path);
     *slash = '/';
 
-    taint_path = alloc_printf("%s/../lib/symsan/TaintPass.so", dir);
+    char *build_taint_path = alloc_printf("%s/../instrumentation/TaintPass.so", dir);
+    if (build_taint_path && !access(build_taint_path, R_OK)) {
+      taint_path = build_taint_path;
+    } else {
+      if (build_taint_path)
+        ck_free(build_taint_path);
+      taint_path = alloc_printf("%s/../lib/symsan/TaintPass.so", dir);
+    }
     if (!access(taint_path, R_OK)) {
       obj_path = alloc_printf("%s/../lib/symsan", dir);
     } else {
@@ -216,6 +223,33 @@ static void add_taint_pass() {
   if (getenv("KO_SOLVE_UB")) {
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] = "-taint-solve-ub=true";
+  }
+
+  const char *ctwm_index_path = getenv("KO_CTWM_INDEX_PATH");
+  if (ctwm_index_path && *ctwm_index_path) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] =
+        alloc_printf("-symsan-ctwm-index-out=%s", ctwm_index_path);
+  }
+
+  if (getenv("KO_CTWM_ENABLE_INDEX")) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-symsan-ctwm-enable-index";
+  }
+
+  if (getenv("KO_CTWM_DISABLE_INDEX")) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-symsan-ctwm-disable-index";
+  }
+
+  if (getenv("KO_CTWM_ENABLE_BB_TRACE")) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-symsan-ctwm-enable-bb-trace";
+  }
+
+  if (getenv("KO_CTWM_DISABLE_BB_TRACE")) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-symsan-ctwm-disable-bb-trace";
   }
 
   if (is_cxx && use_native_cxx) {
@@ -437,4 +471,3 @@ int main(int argc, char **argv) {
 
   return 0;
 }
-

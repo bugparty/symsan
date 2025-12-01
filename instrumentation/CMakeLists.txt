@@ -8,5 +8,5 @@ if(APPLE)
 endif(APPLE)
 
 include(AddLLVM)
-add_llvm_pass_plugin(TaintPass TaintPass.cpp)
+add_llvm_pass_plugin(TaintPass TaintPass.cpp CTWMIndexPass.cpp)
 install (TARGETS TaintPass DESTINATION ${SYMSAN_LIB_DIR})
