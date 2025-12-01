@@ -1,0 +1,23 @@
+{
+  "target": { "file": "dummy.c", "line": 17 },
+  "traces": [
+    {
+      "answer": "reachable",
+      "steps": [
+        { "line": 6,  "dir": "F" },
+        { "line": 12, "dir": "F" },
+        { "line": 14, "dir": "F" }
+      ]
+    },
+    {
+      "answer": "reachable",
+      "steps": [
+        { "line": 14, "dir": "F" }
+      ]
+    },
+    {
+      "answer": "unreachable",
+      "steps": []
+    }
+  ]
+}

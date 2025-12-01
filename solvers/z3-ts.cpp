@@ -94,14 +94,13 @@ int Z3AstParser::restart(std::vector<input_t> &inputs) {
   value_cache_.clear();
   value_cache_.resize(1); // reserve for CONST_OFFSET
 #endif
+  inputs_cache_.clear();
   branch_deps_.clear();
   branch_deps_.resize(inputs.size());
 
   for (size_t i = 0; i < inputs.size(); i++) {
     auto &input = inputs[i];
-#if FILTER_WRONG_AST
     inputs_cache_.emplace_back(input.first, input.second);
-#endif
     // resize branch_deps_
     branch_deps_[i].resize(input.second);
   }
@@ -724,6 +723,48 @@ int Z3AstParser::parse_gep(dfsan_label ptr_label, uptr ptr, dfsan_label index_la
 
   // exception happened, nothing added
   return -1;
+}
+
+int Z3AstParser::build_trace_task(const std::vector<trace_cond> &conds,
+                                  bool add_nested, uint64_t &task_id) {
+  try {
+    // reset and build a new task
+    auto task = std::make_shared<z3_task_t>();
+    input_dep_set_t inputs;
+    expr_set_t added_nested;
+
+    if (conds.empty()) {
+      task->push_back(context_.bool_val(true));
+    } else {
+      for (auto &c : conds) {
+        if (c.label < CONST_OFFSET ||
+            c.label == __dfsan::kInitializingLabel ||
+            c.label >= size_) {
+          return -1;
+        }
+        input_dep_set_t deps;
+        z3::expr expr = serialize(c.label, deps);
+#if FILTER_WRONG_AST
+        if (strict_value_filtering_ && value_cache_[c.label] != (uint64_t)c.is_true) {
+          return -1;
+        }
+#endif
+        z3::expr r = expr.is_bool() ? context_.bool_val(c.is_true)
+                                    : context_.bv_val(c.is_true, expr.get_sort().bv_size());
+        task->push_back(expr == r);
+        if (add_nested) {
+          collect_more_deps(deps);
+          add_nested_constraints(deps, task.get());
+        }
+      }
+    }
+
+    task_id = save_task(task);
+    return 0;
+  } catch (z3::exception e) {
+    fprintf(stderr, "%s\n", e.what());
+    return -1;
+  }
 }
 
 int Z3AstParser::add_constraints(dfsan_label label, uint64_t result) {

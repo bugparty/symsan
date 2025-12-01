@@ -1,6 +1,11 @@
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_STANDARD 14)
 
+include(FetchContent)
+
+FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
+FetchContent_MakeAvailable(json)
+
 ## launcher lib
 add_subdirectory(launcher)
 
@@ -15,6 +20,7 @@ target_link_libraries(FGTest PRIVATE
   z3parser
   z3
   rt
+  nlohmann_json::nlohmann_json
 )
 install (TARGETS FGTest DESTINATION ${SYMSAN_BIN_DIR})
 

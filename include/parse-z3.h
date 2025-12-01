@@ -6,6 +6,11 @@
 
 namespace symsan {
 
+struct trace_cond {
+  dfsan_label label;
+  bool is_true;
+};
+
 using z3_task_t = std::vector<z3::expr>;
 class Z3AstParser : public ASTParser<z3_task_t> {
 public:
@@ -28,6 +33,16 @@ public:
                 int64_t current_offset, bool enum_index,
                 std::vector<uint64_t> &tasks) override;
 
+  // Toggle strict value filtering (used to guard against malformed AST).
+  // For hypothetical trace checking across multiple runs, this should be false.
+  void set_strict_value_filtering(bool v) { strict_value_filtering_ = v; }
+
+  // Build a task from a list of branch decisions (label, is_true).
+  // The generated task is saved internally and the id is returned in task_id.
+  // If conds is empty, a trivial 'true' constraint is inserted to allow solving.
+  int build_trace_task(const std::vector<trace_cond> &conds, bool add_nested,
+                       uint64_t &task_id);
+
   int add_constraints(dfsan_label label, uint64_t result) override;
 
 protected:
@@ -36,6 +51,8 @@ protected:
   const char* atoi_name_format;
 
 private:
+  bool strict_value_filtering_ = true;
+
   // fsize flag
   bool has_fsize;
 
