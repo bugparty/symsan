@@ -159,38 +159,7 @@ std::string buildFilePath(const DIFile *File) {
   return std::string(Path.str());
 }
 
-const DILexicalBlock *getConditionLexicalBlock(const BranchInst &Br) {
-  const Instruction *Cur = &Br;
-  while ((Cur = Cur->getPrevNode())) {
-    const DebugLoc &DL = Cur->getDebugLoc();
-    if (!DL)
-      continue;
-    const DIScope *Scope = dyn_cast_or_null<DIScope>(DL.getScope());
-    while (Scope && !isa<DILexicalBlock>(Scope) && !isa<DISubprogram>(Scope))
-      Scope = Scope->getScope();
-    if (const auto *LB = dyn_cast<DILexicalBlock>(Scope))
-      return LB;
-    if (isa<DISubprogram>(Scope))
-      break;
-  }
-  if (const DebugLoc &DL = Br.getDebugLoc()) {
-    const DIScope *Scope = dyn_cast_or_null<DIScope>(DL.getScope());
-    while (Scope && !isa<DILexicalBlock>(Scope) && !isa<DISubprogram>(Scope))
-      Scope = Scope->getScope();
-    if (const auto *LB = dyn_cast<DILexicalBlock>(Scope))
-      return LB;
-  }
-  return nullptr;
-}
-
 void fillSourceInfo(const BranchInst &Br, BranchRecord &Record) {
-  if (const auto *LB = getConditionLexicalBlock(Br)) {
-    Record.Line = LB->getLine();
-    Record.Column = LB->getColumn();
-    Record.File = buildFilePath(LB->getFile());
-    return;
-  }
-
   if (const DebugLoc &DL = Br.getDebugLoc()) {
     Record.Line = DL.getLine();
     Record.Column = DL.getCol();

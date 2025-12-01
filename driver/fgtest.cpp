@@ -11,6 +11,8 @@ extern "C" {
 #include "parse-z3.h"
 
 #include <memory>
+#include <sstream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -49,6 +51,70 @@ static z3::context __z3_context;
 
 // z3parser
 symsan::Z3ParserSolver *__z3_parser = nullptr;
+
+static const char *pipe_msg_type_str(uint16_t msg_type) {
+  switch (msg_type) {
+    case cond_type: return "cond";
+    case gep_type: return "gep";
+    case memcmp_type: return "memcmp";
+    case fsize_type: return "fsize";
+    case memerr_type: return "memerr";
+    default: return "unknown";
+  }
+}
+
+static std::string pipe_msg_flags_str(const pipe_msg &msg) {
+  std::vector<std::string> parts;
+  auto push_flag = [&parts](const char *name) {
+    parts.emplace_back(name);
+  };
+
+  switch (msg.msg_type) {
+    case cond_type:
+      if (msg.flags & F_ADD_CONS) push_flag("add_cons");
+      if (msg.flags & F_LOOP_EXIT) push_flag("loop_exit");
+      if (msg.flags & F_LOOP_LATCH) push_flag("loop_latch");
+      if (msg.flags & LoopFlagMask) {
+        std::stringstream ss;
+        ss << "loop_bits=0x" << std::hex << (msg.flags & LoopFlagMask);
+        parts.push_back(ss.str());
+      }
+      break;
+    case memerr_type:
+      if (msg.flags & F_MEMERR_UAF) push_flag("uaf");
+      if (msg.flags & F_MEMERR_OLB) push_flag("olb");
+      if (msg.flags & F_MEMERR_OUB) push_flag("oub");
+      if (msg.flags & F_MEMERR_UBI) push_flag("ubi");
+      if (msg.flags & F_MEMERR_NULL) push_flag("null");
+      if (msg.flags & F_MEMERR_FREE) push_flag("double_free");
+      break;
+    default:
+      break;
+  }
+
+  if (parts.empty()) {
+    std::stringstream ss;
+    ss << "0x" << std::hex << msg.flags;
+    return ss.str();
+  }
+
+  std::stringstream ss;
+  for (size_t i = 0; i < parts.size(); ++i) {
+    if (i) ss << "|";
+    ss << parts[i];
+  }
+  return ss.str();
+}
+
+static void pretty_print_pipe_msg(const pipe_msg &msg) {
+  AOUT("pipe_msg { type=%s(%u), flags=%s, instance=%u, addr=%p, ctx=%u, id=%d, label=%d, result=%llu (0x%llx) }\n",
+       pipe_msg_type_str(msg.msg_type), msg.msg_type,
+       pipe_msg_flags_str(msg).c_str(),
+       msg.instance_id, (void*)msg.addr, msg.context,
+       msg.id, msg.label,
+       static_cast<unsigned long long>(msg.result),
+       static_cast<unsigned long long>(msg.result));
+}
 
 static void generate_input(symsan::Z3ParserSolver::solution_t &solutions) {
   char path[PATH_MAX];
@@ -248,6 +314,7 @@ int main(int argc, char* const argv[]) {
   memcmp_msg *mmsg = nullptr;
 
   while (symsan_read_event(&msg, sizeof(msg), 0) > 0) {
+    pretty_print_pipe_msg(msg);
     // solve constraints
     switch (msg.msg_type) {
       case cond_type:
@@ -297,4 +364,3 @@ int main(int argc, char* const argv[]) {
   symsan_destroy();
   exit(0);
 }
-
