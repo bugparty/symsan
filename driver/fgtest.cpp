@@ -48,10 +48,15 @@ static char *input_buf;
 static size_t input_size;
 
 // for output
-static const char* __output_dir = ".";
+static char* __output_dir = nullptr;
+static bool __output_dir_allocated = false;
 static uint32_t __instance_id = 0;
 static uint32_t __session_id = 0;
 static uint32_t __current_index = 0;
+
+static const char* get_output_dir() {
+  return __output_dir ? __output_dir : ".";
+}
 static z3::context __z3_context;
 static size_t max_seeds = 64;
 
@@ -375,7 +380,7 @@ static void write_rewards(const std::string &path,
 
 static void generate_input(symsan::Z3ParserSolver::solution_t &solutions) {
   char path[PATH_MAX];
-  snprintf(path, PATH_MAX, "%s/id-%d-%d-%d", __output_dir,
+  snprintf(path, PATH_MAX, "%s/id-%d-%d-%d", get_output_dir(),
            __instance_id, __session_id, __current_index++);
   int fd = open(path, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
   if (fd == -1) {
@@ -518,6 +523,17 @@ int main(int argc, char* const argv[]) {
 
   if (argc != 6) {
     fprintf(stderr, "Usage: %s target input branch_meta.json traces.json rewards_out.json\n", argv[0]);
+    fprintf(stderr, "\n");
+    fprintf(stderr, "Parameters:\n");
+    fprintf(stderr, "  target          - Path to the instrumented target program to test\n");
+    fprintf(stderr, "  input           - Path to the initial seed input file\n");
+    fprintf(stderr, "  branch_meta.json - JSON file containing branch metadata (line -> symSanId mapping)\n");
+    fprintf(stderr, "                     Format: {\"branches\": [{\"line\": N, \"symSanId\": M}, ...]}\n");
+    fprintf(stderr, "  traces.json     - JSON file containing model traces to evaluate\n");
+    fprintf(stderr, "                     Format: {\"target\": {\"line\": N}, \"traces\": [...]}\n");
+    fprintf(stderr, "                     Each trace has: {\"answer\": \"reachable\"|\"unreachable\", \"steps\": [...]}\n");
+    fprintf(stderr, "  rewards_out.json - Output JSON file to write reward scores for each trace\n");
+    fprintf(stderr, "\n");
     exit(1);
   }
 
@@ -547,7 +563,19 @@ int main(int argc, char* const argv[]) {
       char *end = strchr(output, ':'); // try ':' first, then ' '
       if (end == NULL) end = strchr(output, ' ');
       size_t n = end == NULL? strlen(output) : (size_t)(end - output);
-      __output_dir = strndup(output, n);
+      // Free previously allocated output_dir if any
+      if (__output_dir_allocated && __output_dir) {
+        free(__output_dir);
+        __output_dir = nullptr;
+        __output_dir_allocated = false;
+      }
+      char *new_dir = strndup(output, n);
+      if (new_dir) {
+        __output_dir = new_dir;
+        __output_dir_allocated = true;
+      } else {
+        fprintf(stderr, "Warning: Failed to allocate memory for output_dir, using default\n");
+      }
     }
 
     // check if input is stdin
@@ -615,7 +643,7 @@ int main(int argc, char* const argv[]) {
 
     // write seed to temp file
     char tmp_path[PATH_MAX];
-    snprintf(tmp_path, PATH_MAX, "%s/.fgtest-tmp-%u", __output_dir, __current_index++);
+    snprintf(tmp_path, PATH_MAX, "%s/.fgtest-tmp-%u", get_output_dir(), __current_index++);
     int fd = open(tmp_path, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd == -1) {
       fprintf(stderr, "Failed to create temp seed file: %s\n", strerror(errno));
@@ -799,5 +827,13 @@ int main(int argc, char* const argv[]) {
   }
 
   symsan_destroy();
+  
+  // Clean up allocated output_dir
+  if (__output_dir_allocated && __output_dir) {
+    free(__output_dir);
+    __output_dir = nullptr;
+    __output_dir_allocated = false;
+  }
+  
   exit(0);
 }
