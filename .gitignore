@@ -25,3 +25,4 @@ examples/*
 !examples/*.c
 !examples/*traces.json
 !examples/seed.bin
+**/__pycache__/*.pyc

@@ -1,0 +1,67 @@
+{
+	"name": "SymSan Development Container",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"context": "."
+	},
+	
+	// Workspace folder after container creation
+	"workspaceFolder": "/workspaces/symsan",
+	
+	// Environment variables
+	"containerEnv": {
+		"KO_CC": "clang-14",
+		"KO_CXX": "clang++-14",
+		"KO_USE_FASTGEN": "1",
+		"DEBIAN_FRONTEND": "noninteractive",
+		"TZ": "Etc/UTC"
+	},
+	
+	// VS Code extensions
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-vscode.cpptools",
+				"ms-vscode.cpptools-extension-pack",
+				"ms-vscode.cpptools-themes",
+				"ms-vscode.cmake-tools",
+				"llvm-vs-code-extensions.vscode-clangd",
+				"twxs.cmake",
+				"github.copilot",
+				"eamodio.gitlens",
+				"ms-azuretools.vscode-docker"
+			],
+			"settings": {
+				"C_Cpp.default.compilerPath": "/usr/bin/clang-14",
+				"cmake.cmakePath": "/usr/bin/cmake",
+				"cmake.configureSettings": {
+					"CMAKE_C_COMPILER": "clang-14",
+					"CMAKE_CXX_COMPILER": "clang++-14",
+					"AFLPP_PATH": "/work/aflpp",
+					"CMAKE_BUILD_TYPE": "Debug"
+				}
+			}
+		}
+	},
+	
+	// Command to run after container creation
+	"postCreateCommand": "echo 'Dev container ready!'",
+	
+	// Forward ports (add as needed)
+	"forwardPorts": [],
+	
+	// Use vscode user
+	"remoteUser": "vscode",
+	
+	// Mount options
+	"mounts": [
+		"source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+	],
+	
+	// Container privilege settings (for debugger and other tools)
+	"runArgs": [
+		"--cap-add=SYS_PTRACE",
+		"--security-opt",
+		"seccomp=unconfined"
+	]
+}

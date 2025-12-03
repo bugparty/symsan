@@ -519,6 +519,50 @@ evaluate_model_traces(const std::vector<ModelTrace> &traces) {
   return rows;
 }
 
+static bool parse_hex_seed(const char* hex_str, std::vector<uint8_t> &out) {
+  const char* p = hex_str;
+  // Skip "0x" prefix if present
+  if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+    p += 2;
+  }
+  
+  size_t len = strlen(p);
+  if (len == 0) return false;
+  
+  // Hex string must have even number of characters
+  if (len % 2 != 0) {
+    fprintf(stderr, "Hex string must have even number of digits: %s\n", hex_str);
+    return false;
+  }
+  
+  out.clear();
+  out.reserve(len / 2);
+  
+  for (size_t i = 0; i < len; i += 2) {
+    char high = p[i];
+    char low = p[i + 1];
+    
+    auto hex_to_nibble = [](char c) -> int {
+      if (c >= '0' && c <= '9') return c - '0';
+      if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+      if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+      return -1;
+    };
+    
+    int h = hex_to_nibble(high);
+    int l = hex_to_nibble(low);
+    
+    if (h < 0 || l < 0) {
+      fprintf(stderr, "Invalid hex character in: %s\n", hex_str);
+      return false;
+    }
+    
+    out.push_back(static_cast<uint8_t>((h << 4) | l));
+  }
+  
+  return true;
+}
+
 int main(int argc, char* const argv[]) {
 
   if (argc != 6) {
@@ -526,7 +570,10 @@ int main(int argc, char* const argv[]) {
     fprintf(stderr, "\n");
     fprintf(stderr, "Parameters:\n");
     fprintf(stderr, "  target          - Path to the instrumented target program to test\n");
-    fprintf(stderr, "  input           - Path to the initial seed input file\n");
+    fprintf(stderr, "  input           - Path to seed input file OR hex string (e.g., 0x1a1d) OR plain string\n");
+    fprintf(stderr, "                     - File path: reads binary content from file\n");
+    fprintf(stderr, "                     - Hex string: 0x1a1d or 1a1d (converts to bytes)\n");
+    fprintf(stderr, "                     - Plain string: any other string (used as-is)\n");
     fprintf(stderr, "  branch_meta.json - JSON file containing branch metadata (line -> symSanId mapping)\n");
     fprintf(stderr, "                     Format: {\"branches\": [{\"line\": N, \"symSanId\": M}, ...]}\n");
     fprintf(stderr, "  traces.json     - JSON file containing model traces to evaluate\n");
@@ -607,20 +654,58 @@ int main(int argc, char* const argv[]) {
   }
 
   // load initial seed into queue
-  struct stat st;
-  int input_fd = open(input, O_RDONLY);
-  if (input_fd == -1) {
-    fprintf(stderr, "Failed to open input file: %s\n", strerror(errno));
-    exit(1);
-  }
-  fstat(input_fd, &st);
   Seed s0;
-  s0.data.resize(st.st_size);
-  if (read(input_fd, s0.data.data(), st.st_size) != st.st_size) {
-    fprintf(stderr, "Failed to read seed input: %s\n", strerror(errno));
-    exit(1);
+  struct stat st;
+  
+  // Check if input starts with "0x" or is all hex digits (hex string mode)
+  bool is_hex = (input[0] == '0' && (input[1] == 'x' || input[1] == 'X'));
+  if (!is_hex && strlen(input) > 0) {
+    // Check if it's all hex digits
+    bool all_hex = true;
+    for (const char* p = input; *p; ++p) {
+      if (!((*p >= '0' && *p <= '9') || 
+            (*p >= 'a' && *p <= 'f') || 
+            (*p >= 'A' && *p <= 'F'))) {
+        all_hex = false;
+        break;
+      }
+    }
+    // Only treat as hex if it has even number of digits and at least 2 chars
+    if (all_hex && strlen(input) >= 2 && strlen(input) % 2 == 0) {
+      is_hex = true;
+    }
   }
-  close(input_fd);
+  
+  if (is_hex) {
+    // Parse as hex string
+    if (!parse_hex_seed(input, s0.data)) {
+      fprintf(stderr, "Failed to parse hex seed: %s\n", input);
+      exit(1);
+    }
+    fprintf(stderr, "Loaded hex seed: %s (%zu bytes)\n", input, s0.data.size());
+  } else {
+    // Try to open as file first
+    int input_fd = open(input, O_RDONLY);
+    if (input_fd != -1) {
+      // Successfully opened as file
+      fstat(input_fd, &st);
+      s0.data.resize(st.st_size);
+      if (read(input_fd, s0.data.data(), st.st_size) != st.st_size) {
+        fprintf(stderr, "Failed to read seed input: %s\n", strerror(errno));
+        close(input_fd);
+        exit(1);
+      }
+      close(input_fd);
+      fprintf(stderr, "Loaded seed from file: %s (%zu bytes)\n", input, s0.data.size());
+    } else {
+      // Treat as plain string
+      size_t len = strlen(input);
+      s0.data.resize(len);
+      memcpy(s0.data.data(), input, len);
+      fprintf(stderr, "Loaded string seed: %s (%zu bytes)\n", input, s0.data.size());
+    }
+  }
+  
   seed_queue.push_back(std::move(s0));
 
   // setup launcher
