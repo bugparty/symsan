@@ -37,11 +37,23 @@ using namespace __dfsan;
 
 #define OPTIMISTIC 1
 
+// Define FGTEST_DEBUG to enable verbose debug output
+// #define FGTEST_DEBUG 1
+
 #undef AOUT
+#ifdef FGTEST_DEBUG
 # define AOUT(...)                                      \
   do {                                                  \
     printf(__VA_ARGS__);                                \
   } while(false)
+# define DOUT(...)                                      \
+  do {                                                  \
+    fprintf(stderr, "[FGTEST] " __VA_ARGS__);           \
+  } while(false)
+#else
+# define AOUT(...) do {} while(false)
+# define DOUT(...) do {} while(false)
+#endif
 
 // for input
 static char *input_buf;
@@ -58,7 +70,7 @@ static const char* get_output_dir() {
   return __output_dir ? __output_dir : ".";
 }
 static z3::context __z3_context;
-static size_t max_seeds = 64;
+static size_t max_seeds = 2;
 
 // z3parser
 symsan::Z3ParserSolver *__z3_parser = nullptr;
@@ -119,7 +131,7 @@ static std::string traces_path;
 static std::string reward_output_path;
 
 // cached metadata/runtime info
-static std::unordered_map<int, BranchMeta> line_to_branch;
+static std::unordered_map<int, std::vector<BranchMeta>> line_to_branches; // multiple branches per line
 static std::unordered_map<int, dfsan_label> symSanId_to_label;
 static std::vector<ObservedCond> observed_conds;
 static size_t branch_count_meta = 0;
@@ -231,7 +243,7 @@ static bool load_branch_metadata(const std::string &path) {
     BranchMeta bm;
     bm.line = b["line"];
     bm.symSanId = b["symSanId"];
-    line_to_branch[bm.line] = bm;
+    line_to_branches[bm.line].push_back(bm);
     symSanId_to_line[bm.symSanId] = bm.line;
   }
   return true;
@@ -272,26 +284,80 @@ build_model_conds(const ModelTrace &mt) {
   std::vector<symsan::trace_cond> out;
   std::unordered_set<int> seen;
   out.reserve(mt.steps.size());
+  AOUT("build_model_conds: %zu input steps\n", mt.steps.size());
   for (auto &s : mt.steps) {
-    auto it = line_to_branch.find(s.line);
-    if (it == line_to_branch.end()) continue;
-    int symId = it->second.symSanId;
-    if (!seen.insert(symId).second) continue;
-    auto itL = symSanId_to_label.find(symId);
-    if (itL == symSanId_to_label.end()) continue;
-    symsan::trace_cond tc;
-    tc.label = itL->second;
-    tc.is_true = s.is_true;
-    out.push_back(tc);
+    AOUT("  step: line=%d, dir=%s\n", s.line, s.is_true ? "T" : "F");
+    auto it = line_to_branches.find(s.line);
+    if (it == line_to_branches.end()) {
+      AOUT("    -> line not in line_to_branches\n");
+      continue;
+    }
+    // Try all symSanIds for this line to find one that was observed
+    bool found = false;
+    for (auto &bm : it->second) {
+      int symId = bm.symSanId;
+      if (!seen.insert(symId).second) {
+        AOUT("    -> symId %d already seen\n", symId);
+        continue;
+      }
+      auto itL = symSanId_to_label.find(symId);
+      if (itL == symSanId_to_label.end()) {
+        AOUT("    -> symId %d not in symSanId_to_label\n", symId);
+        continue;
+      }
+      symsan::trace_cond tc;
+      tc.label = itL->second;
+      tc.is_true = s.is_true;
+      out.push_back(tc);
+      AOUT("    -> added: label=%d, is_true=%d (symId=%d)\n", tc.label, tc.is_true, symId);
+      found = true;
+      break;  // Found one observed symSanId for this line
+    }
+    if (!found) {
+      AOUT("    -> no observed symSanId found for line %d\n", s.line);
+    }
   }
+  AOUT("build_model_conds: %zu output conditions\n", out.size());
   return out;
 }
+
+// Map from line -> observed branch direction (true/false)
+// This is built from concrete execution, including label=0 conditions
+static std::unordered_map<int, bool> observed_line_to_dir;
 
 static StepMetrics compute_step_metrics(size_t provided, size_t expected, bool solver_sat) {
   StepMetrics m;
   if (provided == 0 || expected == 0) return m;
   m.precision = solver_sat ? 1.0 : 0.0;
   m.recall = static_cast<double>(provided) / static_cast<double>(expected);
+  if (m.precision + m.recall > 0.0) {
+    m.f1 = 2.0 * m.precision * m.recall / (m.precision + m.recall);
+  }
+  return m;
+}
+
+// New function: compare model trace against observed execution
+static StepMetrics compute_step_metrics_vs_observed(const ModelTrace &mt) {
+  StepMetrics m;
+  if (mt.steps.empty() || observed_line_to_dir.empty()) return m;
+
+  size_t correct = 0;
+  size_t matched = 0;  // steps that exist in observed map
+
+  for (auto &s : mt.steps) {
+    auto it = observed_line_to_dir.find(s.line);
+    if (it == observed_line_to_dir.end()) {
+      // step not observed - branch wasn't taken
+      continue;
+    }
+    matched++;
+    if (it->second == s.is_true) correct++;
+  }
+
+  if (matched == 0) return m;
+
+  m.precision = static_cast<double>(correct) / static_cast<double>(matched);
+  m.recall = static_cast<double>(correct) / static_cast<double>(observed_line_to_dir.size());
   if (m.precision + m.recall > 0.0) {
     m.f1 = 2.0 * m.precision * m.recall / (m.precision + m.recall);
   }
@@ -311,21 +377,23 @@ static StepMetrics compute_step_metrics_vs_gt(const ModelTrace &mt) {
   size_t gt_total = gt_map.size();
   size_t provided = mt.steps.size();
   size_t correct = 0;
-  size_t wrong = 0;
+  size_t matched = 0;  // steps that exist in ground truth (whether correct or not)
 
   for (auto &s : mt.steps) {
     auto it = gt_map.find(s.line);
     if (it == gt_map.end()) {
-      wrong++;
+      // step not in ground truth - ignore for precision, but could be valid path
       continue;
     }
+    matched++;
     if (it->second == s.is_true) correct++;
-    else wrong++;
   }
 
   if (gt_total == 0 || provided == 0) return m;
 
-  m.precision = static_cast<double>(correct) / static_cast<double>(provided);
+  // precision: of the steps that match GT lines, how many have correct direction
+  // recall: of the GT steps, how many did we correctly predict
+  m.precision = (matched > 0) ? static_cast<double>(correct) / static_cast<double>(matched) : 0.0;
   m.recall = static_cast<double>(correct) / static_cast<double>(gt_total);
   if (m.precision + m.recall > 0.0) {
     m.f1 = 2.0 * m.precision * m.recall / (m.precision + m.recall);
@@ -335,8 +403,9 @@ static StepMetrics compute_step_metrics_vs_gt(const ModelTrace &mt) {
 
 static double compute_reward(const ModelTrace &mt, bool sat, bool unknown,
                              const StepMetrics &m) {
-  if (unknown) return -0.1; // timeout/unknown solver status
+  double path_score = m.f1; // already in [0,1]
 
+  // Compute status score - how well does the answer match target_reached?
   double status_score = 0.0;
   if (target_reached) {
     if (mt.answer == ModelTrace::Reachable) status_score = 1.0;
@@ -346,12 +415,21 @@ static double compute_reward(const ModelTrace &mt, bool sat, bool unknown,
     else if (mt.answer == ModelTrace::Reachable) status_score = -1.0;
   }
 
+  // When solver is unknown (e.g., Z3 couldn't evaluate the trace), 
+  // still use status and step metrics but with reduced confidence
+  if (unknown) {
+    // 50% weight on status (answer correctness)
+    // 30% weight on step metrics (path correctness)
+    // 20% penalty for solver uncertainty
+    double reward = 0.5 * status_score + 0.3 * path_score - 0.2;
+    if (!mt.steps.empty()) reward += 0.05;
+    return reward;
+  }
+
   double sat_score = 0.0;
   if (mt.answer == ModelTrace::Reachable) {
     sat_score = sat ? 0.5 : -0.5;
   }
-
-  double path_score = m.f1; // already in [0,1]
 
   double reward = 0.6 * status_score + 0.2 * sat_score + 0.2 * path_score;
   if (!mt.steps.empty()) reward += 0.05; // small format bonus
@@ -481,13 +559,20 @@ evaluate_model_traces(const std::vector<ModelTrace> &traces) {
     row.answer = t.answer;
 
     auto conds = build_model_conds(t);
-    row.provided_steps = conds.size();
+    row.provided_steps = t.steps.size();  // Use actual steps, not just mapped ones
 
     uint64_t task_id = 0;
     // When evaluating model traces, avoid nested deps recorded from the last concrete run.
-    bool build_ok = (__z3_parser->build_trace_task(conds, /*add_nested=*/false, task_id) == 0);
-    if (!build_ok) {
+    AOUT("Calling build_trace_task with %zu conds:\n", conds.size());
+    for (size_t i = 0; i < conds.size(); i++) {
+      AOUT("  cond[%zu]: label=%d, is_true=%d\n", i, conds[i].label, conds[i].is_true);
+    }
+    int build_ret = __z3_parser->build_trace_task(conds, /*add_nested=*/false, task_id);
+    AOUT("build_trace_task returned %d for %zu conds\n", build_ret, conds.size());
+    if (build_ret != 0) {
+      // Z3 couldn't build task - fall back to observed comparison
       row.solver_unknown = true;
+      row.metrics = compute_step_metrics_vs_observed(t);
       row.reward = compute_reward(t, false, true, row.metrics);
       rows.push_back(row);
       continue;
@@ -509,6 +594,8 @@ evaluate_model_traces(const std::vector<ModelTrace> &traces) {
 
     if (target_reached && !ground_truth_path.empty()) {
       row.metrics = compute_step_metrics_vs_gt(t);
+    } else if (!observed_line_to_dir.empty()) {
+      row.metrics = compute_step_metrics_vs_observed(t);
     } else {
       row.metrics = compute_step_metrics(row.provided_steps, branch_count_meta, row.solver_sat);
     }
@@ -688,6 +775,7 @@ int main(int argc, char* const argv[]) {
     int input_fd = open(input, O_RDONLY);
     if (input_fd != -1) {
       // Successfully opened as file
+      printf("Treating input as file: %s\n", input);
       fstat(input_fd, &st);
       s0.data.resize(st.st_size);
       if (read(input_fd, s0.data.data(), st.st_size) != st.st_size) {
@@ -699,6 +787,7 @@ int main(int argc, char* const argv[]) {
       fprintf(stderr, "Loaded seed from file: %s (%zu bytes)\n", input, s0.data.size());
     } else {
       // Treat as plain string
+      printf("Treating input as plain string: %s\n", input);
       size_t len = strlen(input);
       s0.data.resize(len);
       memcpy(s0.data.data(), input, len);
@@ -719,7 +808,9 @@ int main(int argc, char* const argv[]) {
   symsan_set_bounds_check(1);
   symsan_set_solve_ub(solve_ub);
   // exploration loop over queued seeds
+  AOUT("Starting exploration loop, max_seeds=%zu\n", max_seeds);
   while (!seed_queue.empty() && seeds_processed < max_seeds) {
+    AOUT("Processing seed %zu/%zu, queue size=%zu\n", seeds_processed + 1, max_seeds, seed_queue.size());
     Seed seed = std::move(seed_queue.front());
     seed_queue.pop_front();
     ++seeds_processed;
@@ -808,6 +899,16 @@ int main(int argc, char* const argv[]) {
           symSanId_to_label[msg.id] = msg.label;
           observed_conds.push_back({static_cast<int>(msg.id), msg.label, msg.result != 0});
           run_conds.push_back({static_cast<int>(msg.id), msg.label, msg.result != 0});
+          // Record observed branch direction by line (even for label=0)
+          {
+            auto itLine = symSanId_to_line.find(msg.id);
+            if (itLine != symSanId_to_line.end()) {
+              observed_line_to_dir[itLine->second] = (msg.result != 0);
+              AOUT("  observed: symId=%u -> line=%d, dir=%s\n", msg.id, itLine->second, msg.result ? "T" : "F");
+            } else {
+              AOUT("  not found in symSanId_to_line: symId=%u\n", msg.id);
+            }
+          }
           __solve_cond(msg.label, msg.result, msg.flags & F_ADD_CONS, (void*)msg.addr);
           break;
         case gep_type:
@@ -895,9 +996,20 @@ int main(int argc, char* const argv[]) {
     }
     std::sort(ground_truth_path.begin(), ground_truth_path.end(),
               [](const GTStep &a, const GTStep &b) { return a.line < b.line; });
+    AOUT("Ground truth path (%zu steps):\n", ground_truth_path.size());
+    for (auto &s : ground_truth_path) {
+      AOUT("  line=%d, dir=%s\n", s.line, s.is_true ? "T" : "F");
+    }
   }
 
   if (reward_mode) {
+    AOUT("target_reached=%d, target_runs=%u\n", target_reached, target_runs);
+    AOUT("observed_line_to_dir has %zu entries:\n", observed_line_to_dir.size());
+    for (auto &kv : observed_line_to_dir) {
+      AOUT("  line=%d -> dir=%s\n", kv.first, kv.second ? "T" : "F");
+    }
+    AOUT("observed_conds has %zu entries:\n", observed_conds.size());
+    AOUT("symSanId_to_label has %zu entries:\n", symSanId_to_label.size());
     if (__z3_parser) {
       __z3_parser->set_strict_value_filtering(false);
     }
