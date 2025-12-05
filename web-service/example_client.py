@@ -14,7 +14,7 @@ def submit_task(program, traces_path, seed=None, branch_meta_path=None):
     提交 fgtest 任务
     
     Args:
-        program: 程序名称 ('dummy' 或 'xor')
+        program: 程序名称 ('dummy', 'xor' 或 'control_temp')
         traces_path: 轨迹 JSON 文件路径
         seed: 可选，写入 stdin 的种子字符串，默认为 "0402"
         branch_meta_path: 可选，branch metadata 文件路径，默认使用 bin/ctwm_index.json

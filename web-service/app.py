@@ -54,7 +54,7 @@ RESULTS_DIR.mkdir(exist_ok=True)
 
 @app.post("/api/submit")
 async def submit_task(
-    program: str = Form(..., description="选择程序: dummy 或 xor"),
+    program: str = Form(..., description="选择程序: dummy, xor 或 control_temp"),
     seed: Optional[str] = Form("0402", description="写入目标 stdin 的种子字符串（原样写入，默认 \"0402\"）"),
     branch_meta: Optional[UploadFile] = File(None, description="分支元数据 JSON 文件（可选，默认使用bin/ctwm_index.json）"),
     traces: UploadFile = File(..., description="轨迹 JSON 文件"),
@@ -70,7 +70,7 @@ async def submit_task(
     """
     # 验证程序选择
     if program not in ["dummy", "xor", "control_temp"]:
-        raise HTTPException(status_code=400, detail="Program must be 'dummy' or 'xor'")
+        raise HTTPException(status_code=400, detail="Program must be 'dummy', 'xor' or 'control_temp'")
     
     task_id = str(uuid.uuid4())[:8]
     task_dir = UPLOAD_DIR / task_id
