@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-API_URL="${API_URL:-http://localhost:8000}"
+API_URL="${API_URL:-http://localhost:11000}"
 
 echo "=== Testing fgtest Web Service API ==="
 echo ""

@@ -101,10 +101,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.post("/api/submit")
 async def submit_task(
-    program: str = Form(..., description="选择程序: dummy, xor 或 control_temp"),
-    seed: Optional[str] = Form("0402", description="写入目标 stdin 的种子字符串（原样写入，默认 \"0402\"）"),
-    branch_meta: Optional[UploadFile] = File(None, description="分支元数据 JSON 文件（可选，默认使用bin/ctwm_index.json）"),
     traces: UploadFile = File(..., description="轨迹 JSON 文件"),
+    program: str = Form("dummy", description="选择程序: dummy, xor 或 control_temp"),
+    seed: str = Form("0402", description="写入目标 stdin 的种子字符串（原样写入，默认 \"0402\"）"),
+    branch_meta: Optional[UploadFile] = File(None, description="分支元数据 JSON 文件（可选，默认使用bin/ctwm_index.json）"),
     options: Optional[str] = Form(None, description="可选配置 JSON 字符串")
 ):
     """
@@ -132,7 +132,7 @@ async def submit_task(
             raise HTTPException(status_code=500, detail=f"Program '{program}' not found in bin directory ({target_path})")
         
         # seed 参数直接作为字符串传递，fgtest 会将其写入目标 stdin
-        seed_input = seed if seed else "0402"
+        seed_input = seed
         
         # 处理 branch_meta：如果用户上传了就用上传的，否则优先使用 {program}_ctwm_index.json，不存在则回退到通用 ctwm_index.json
         if branch_meta and branch_meta.filename:
