@@ -1,0 +1,56 @@
+{
+  "target": { "file": "control_temp.c", "line": 120 },
+  "traces": [
+    {
+      "answer": "reachable",
+      "steps": [
+        { "line": 67, "dir": "T" }
+      ]
+    },
+    {
+      "answer": "reachable",
+      "steps": [
+        { "line": 67, "dir": "T" },
+        { "line": 69, "dir": "T" }
+      ]
+    },
+    {
+      "answer": "reachable",
+      "steps": [
+        { "line": 67, "dir": "T" },
+        { "line": 69, "dir": "T" },
+        { "line": 100, "dir": "F" }
+      ]
+    },
+    {
+      "answer": "reachable",
+      "steps": [
+        { "line": 67, "dir": "T" },
+        { "line": 69, "dir": "T" },
+        { "line": 100, "dir": "F" },
+        { "line": 110, "dir": "F" }
+      ]
+    },
+    {
+      "answer": "reachable",
+      "steps": [
+        { "line": 67, "dir": "T" },
+        { "line": 69, "dir": "T" },
+        { "line": 100, "dir": "F" },
+        { "line": 110, "dir": "F" },
+        { "line": 118, "dir": "T" }
+      ]
+    },
+    {
+      "answer": "unreachable",
+      "steps": [
+        { "line": 67, "dir": "T" },
+        { "line": 69, "dir": "F" }
+      ]
+    },
+    {
+      "answer": "unreachable",
+      "steps": []
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 int main(){
     unsigned char argc;
     size_t n = fread(&argc, 1, 1, stdin);
+    printf("Read n from stdin: %d\n", (int)(argc));
     if (n == 0) {
         return 4;
     }
