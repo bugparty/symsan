@@ -14,3 +14,7 @@ install/
 
 # Docker
 .dockerignore
+
+# Web service runtime artifacts
+web-service/uploads/
+web-service/results/

@@ -20,7 +20,8 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y python3 python3-pip python3-venv \
-    libz3-dev libgoogle-perftools-dev libboost-container-dev libprotobuf-dev && \
+    libz3-dev libgoogle-perftools-dev libboost-container-dev libprotobuf-dev \
+    libc++-14-dev libc++abi-14-dev libunwind-14-dev && \
     rm -rf /var/lib/apt/lists/*
 
 COPY web-service/requirements.txt .

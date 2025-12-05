@@ -208,8 +208,13 @@ async def submit_task(
             "message": "Task submitted successfully"
         }
     
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to submit task: {str(e)}")
+        import traceback
+        error_detail = traceback.format_exc()
+        logger.error(f"Failed to submit task: {error_detail}")
+        raise HTTPException(status_code=500, detail=f"Failed to submit task: {type(e).__name__}: {str(e) or 'No message'}\n{error_detail}")
 
 
 @app.get("/api/status/{task_id}")

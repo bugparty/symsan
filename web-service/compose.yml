@@ -3,11 +3,16 @@ services:
     build:
       context: ..
       dockerfile: web-service/Dockerfile
+      args:
+        BUILDER_IMAGE: symsan-builder
     ports:
       - "11000:8000"
     volumes:
       - ./uploads:/app/uploads
       - ./results:/app/results
+      # Mount source files for development (changes take effect on restart)
+      - ./app.py:/app/app.py:ro
+      - ./fgtest_wrapper.py:/app/fgtest_wrapper.py:ro
     environment:
       - FGTEST_PATH=/appdata/bin/fgtest
       - FGTEST_BIN_DIR=/appdata/bin

@@ -27,19 +27,30 @@ SKIP_BUILDER="${SKIP_BUILDER:-}"
 # Use default docker builder to access local images (not a container-based buildx builder)
 USE_DEFAULT_BUILDER="${USE_DEFAULT_BUILDER:-1}"
 
+# For local images we usually want the classic builder (BuildKit disabled)
+if [[ -n "${USE_DEFAULT_BUILDER}" && -z "${DOCKER_BUILDKIT:-}" ]]; then
+  export DOCKER_BUILDKIT=0
+fi
+
 buildx() {
   local no_cache_flag="$1"
   shift
   local args=(build)
+  local use_buildx=0
   
   # Only use buildx if explicitly using a custom builder
   if [[ -n "${BUILDX_BUILDER}" ]]; then
     args=(buildx build --builder "${BUILDX_BUILDER}")
+    use_buildx=1
   elif [[ -z "${USE_DEFAULT_BUILDER}" ]]; then
     args=(buildx build)
+    use_buildx=1
   fi
   
-  args+=(--progress="${BUILDX_PROGRESS}")
+  # progress flag only valid for buildx
+  if [[ "${use_buildx}" -eq 1 ]]; then
+    args+=(--progress="${BUILDX_PROGRESS}")
+  fi
   
   if [[ -n "${no_cache_flag}" ]]; then
     args+=(--no-cache)
