@@ -10,4 +10,4 @@ if ! nm -gU "$file" | grep -q "$symbol"; then
 fi
 
 export TAINT_OPTIONS="output_dir=out:taint_file=stdin:debug=1"
-../build/bin/fgtest ./xor seed.bin ctwm_index.json xor_traces.json rewards.json
+../build/bin/fgtest ./xor seed.bin xor_ctwm_index.json xor_traces.json rewards.json

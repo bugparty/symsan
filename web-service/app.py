@@ -56,7 +56,7 @@ async def submit_task(
     
     接收上传的文件和 seed 字符串（直接写入目标程序 stdin），启动后台执行任务
     - seed: 任何字符串，原样写入 stdin（如 "0x1a1d" 会按字符写入），默认 "0402"
-    - branch_meta: 可选，不上传则使用 bin/ctwm_index.json
+    - branch_meta: 可选，不上传则使用 bin/{program}_ctwm_index.json
     - traces: 必需的轨迹 JSON 文件
     """
     # 验证程序选择
@@ -85,8 +85,8 @@ async def submit_task(
             with open(branch_meta_path, "wb") as f:
                 f.write(await branch_meta.read())
         else:
-            # 使用默认的 ctwm_index.json
-            default_meta_path = (BIN_DIR / "ctwm_index.json").resolve()
+            # 使用默认的 {program}_ctwm_index.json
+            default_meta_path = (BIN_DIR / f"{program}_ctwm_index.json").resolve()
             if not default_meta_path.exists():
                 raise HTTPException(status_code=500, detail=f"Default branch metadata not found: {default_meta_path}")
             branch_meta_path = default_meta_path
@@ -212,7 +212,7 @@ async def root():
         },
         "defaults": {
             "seed": "0402",
-            "branch_meta": str(BIN_DIR / "ctwm_index.json"),
+            "branch_meta": str(BIN_DIR / "{program}_ctwm_index.json"),
             "bin_dir": str(BIN_DIR)
         },
         "note": "seed 和 branch_meta 均可选，使用默认值"
