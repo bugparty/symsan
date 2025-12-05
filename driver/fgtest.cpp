@@ -55,6 +55,28 @@ using namespace __dfsan;
 # define DOUT(...) do {} while(false)
 #endif
 
+// Helper function to parse hex string (e.g., "0x1a2b" or "1a2b") into bytes
+static bool parse_hex_seed(const char* hex, std::vector<uint8_t>& out) {
+  const char* p = hex;
+  // Skip optional "0x" prefix
+  if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+    p += 2;
+  }
+  size_t len = strlen(p);
+  if (len == 0 || len % 2 != 0) return false;
+  
+  out.clear();
+  out.reserve(len / 2);
+  for (size_t i = 0; i < len; i += 2) {
+    char byte_str[3] = {p[i], p[i+1], 0};
+    char* end;
+    unsigned long val = strtoul(byte_str, &end, 16);
+    if (*end != '\0') return false;
+    out.push_back(static_cast<uint8_t>(val));
+  }
+  return true;
+}
+
 // for input
 static char *input_buf;
 static size_t input_size;
