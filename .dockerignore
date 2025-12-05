@@ -1,0 +1,16 @@
+# Build artifacts
+build/
+install/
+
+# Git
+.git/
+.gitignore
+
+# IDE/Editor
+.vscode/
+*.swp
+*.swo
+*~
+
+# Docker
+.dockerignore

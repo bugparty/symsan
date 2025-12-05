@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   web-service:
-    image: symsan-web-service:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "11000:8000"
     volumes:
