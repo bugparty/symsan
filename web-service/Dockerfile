@@ -1,22 +1,41 @@
-# Minimal image for the fgtest FastAPI service
-# Build: docker build -t symsan-web-service web-service
-# Run (mount fgtest and data dirs):
-#   docker run --rm -p 8000:8000 -v /path/to/fgtest:/opt/fgtest \
-#     -v $PWD/uploads:/app/uploads -v $PWD/results:/app/results symsan-web-service
-FROM python:3.11-slim
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    FGTEST_PATH=/opt/fgtest
+# Build steps:
+#   1) Build the symsan builder image from repo root: docker build -t symsan-builder .
+#   2) Build this image using the builder artifacts:
+#      docker build -t symsan-web-service -f web-service/Dockerfile . --build-arg BUILDER_IMAGE=symsan-builder
 
+ARG BUILDER_IMAGE=symsan-builder
+FROM ${BUILDER_IMAGE} AS symsan-builder
+WORKDIR /work/symsan
+
+FROM ubuntu:noble
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    FGTEST_PATH=/appdata/bin/fgtest \
+    FGTEST_BIN_DIR=/appdata/bin \
+    PATH="/opt/venv/bin:/appdata/bin:${PATH}"
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip python3-venv \
+    libz3-dev libgoogle-perftools-dev libboost-container-dev libprotobuf-dev && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY app.py fgtest_wrapper.py ./
-COPY ./bin ./bin
+COPY web-service/requirements.txt .
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+RUN mkdir -p /appdata/bin
+COPY --from=symsan-builder /work/symsan/build/bin/fgtest /appdata/bin/fgtest
+COPY --from=symsan-builder /work/symsan/examples/dummy /appdata/bin/dummy
+COPY --from=symsan-builder /work/symsan/examples/xor /appdata/bin/xor
+COPY --from=symsan-builder /work/symsan/examples/ctwm_index.json /appdata/bin/ctwm_index.json
+
+COPY web-service/app.py web-service/fgtest_wrapper.py ./
+COPY web-service/bin ./bin
+
 # Ensure runtime directories exist
 RUN mkdir -p uploads results
 

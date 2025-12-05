@@ -30,10 +30,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 目录配置
-UPLOAD_DIR = Path("uploads")
-RESULTS_DIR = Path("results")
-FGTEST_PATH = os.environ.get("FGTEST_PATH", "../build/bin/fgtest")
+# 基准目录
+BASE_DIR = Path(__file__).resolve().parent
+# 路径配置（可通过环境变量覆盖），统一为绝对路径
+BIN_DIR = Path(os.environ.get("FGTEST_BIN_DIR", "/appdata/bin")).resolve()
+UPLOAD_DIR = Path(os.environ.get("FGTEST_UPLOAD_DIR", BASE_DIR / "uploads")).resolve()
+RESULTS_DIR = Path(os.environ.get("FGTEST_RESULTS_DIR", BASE_DIR / "results")).resolve()
+FGTEST_PATH = os.environ.get("FGTEST_PATH", str((BIN_DIR / "fgtest").resolve()))
 
 # 创建必要的目录
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -43,7 +46,7 @@ RESULTS_DIR.mkdir(exist_ok=True)
 @app.post("/api/submit")
 async def submit_task(
     program: str = Form(..., description="选择程序: dummy 或 xor"),
-    seed: Optional[str] = Form("0x0402", description="种子字符串 (hex如0x1a1d或普通字符串，默认0x0402)"),
+    seed: Optional[str] = Form("0402", description="写入目标 stdin 的种子字符串（原样写入，默认 \"0402\"）"),
     branch_meta: Optional[UploadFile] = File(None, description="分支元数据 JSON 文件（可选，默认使用bin/ctwm_index.json）"),
     traces: UploadFile = File(..., description="轨迹 JSON 文件"),
     options: Optional[str] = Form(None, description="可选配置 JSON 字符串")
@@ -51,8 +54,8 @@ async def submit_task(
     """
     提交一个新的 fgtest 任务
     
-    接收上传的文件和可选的 seed 字符串，启动后台执行任务
-    - seed: 十六进制字符串（如 0x1a1d）或普通字符串，默认为 0x0402
+    接收上传的文件和 seed 字符串（直接写入目标程序 stdin），启动后台执行任务
+    - seed: 任何字符串，原样写入 stdin（如 "0x1a1d" 会按字符写入），默认 "0402"
     - branch_meta: 可选，不上传则使用 bin/ctwm_index.json
     - traces: 必需的轨迹 JSON 文件
     """
@@ -68,29 +71,28 @@ async def submit_task(
     
     try:
         # 使用本地 bin 目录中的程序
-        target_path = Path("bin") / program
+        target_path = (BIN_DIR / program).resolve()
         if not target_path.exists():
-            raise HTTPException(status_code=500, detail=f"Program '{program}' not found in bin directory")
+            raise HTTPException(status_code=500, detail=f"Program '{program}' not found in bin directory ({target_path})")
         
-        # seed 参数直接作为字符串传递给 fgtest
-        # fgtest 会自动识别是十六进制、普通字符串还是文件路径
-        seed_input = seed if seed else "0x0402"
+        # seed 参数直接作为字符串传递，fgtest 会将其写入目标 stdin
+        seed_input = seed if seed else "0402"
         
         # 处理 branch_meta：如果用户上传了就用上传的，否则使用默认路径
         if branch_meta and branch_meta.filename:
             # 用户上传了 branch_meta 文件
-            branch_meta_path = task_dir / "branch_meta.json"
+            branch_meta_path = (task_dir / "branch_meta.json").resolve()
             with open(branch_meta_path, "wb") as f:
                 f.write(await branch_meta.read())
         else:
             # 使用默认的 ctwm_index.json
-            default_meta_path = Path("bin") / "ctwm_index.json"
+            default_meta_path = (BIN_DIR / "ctwm_index.json").resolve()
             if not default_meta_path.exists():
                 raise HTTPException(status_code=500, detail=f"Default branch metadata not found: {default_meta_path}")
             branch_meta_path = default_meta_path
         
         # 保存 traces 文件
-        traces_path = task_dir / "traces.json"
+        traces_path = (task_dir / "traces.json").resolve()
         with open(traces_path, "wb") as f:
             f.write(await traces.read())
         
@@ -209,8 +211,9 @@ async def root():
             "download": "GET /api/download/{task_id}"
         },
         "defaults": {
-            "seed": "0x0402",
-            "branch_meta": "bin/ctwm_index.json"
+            "seed": "0402",
+            "branch_meta": str(BIN_DIR / "ctwm_index.json"),
+            "bin_dir": str(BIN_DIR)
         },
         "note": "seed 和 branch_meta 均可选，使用默认值"
     }
@@ -220,4 +223,3 @@ async def root():
 async def health():
     """健康检查端点"""
     return {"status": "healthy"}
-

@@ -51,21 +51,19 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 
 **参数（multipart/form-data）：**
 - `program` (必需): 选择程序，可选值 `dummy` 或 `xor`
-- `seed` (可选): 种子输入字符串，默认为 `0x0402`
-  - 支持十六进制格式：`0x1a1d` 或 `1a1d`
-  - 支持普通字符串：`hello`、`test` 等
+- `seed` (可选): 写入目标 stdin 的种子字符串（原样写入，不再解析为 hex 或文件路径），默认为 `"0402"`
 - `branch_meta` (可选): 分支元数据 JSON 文件，默认使用 `bin/ctwm_index.json`
 - `traces` (必需): 轨迹 JSON 文件
 - `options` (可选): JSON 字符串配置
 
 **示例 curl 命令**:
 ```bash
-# 使用所有默认值（seed=0x0402, branch_meta=bin/ctwm_index.json）
+# 使用所有默认值（seed=0402, branch_meta=bin/ctwm_index.json）
 curl -X POST http://localhost:8000/api/submit \
   -F "program=xor" \
   -F "traces=@examples/xor_traces.json"
 
-# 使用自定义 seed，默认 branch_meta
+# 使用自定义 seed（按字符串写入 stdin），默认 branch_meta
 curl -X POST http://localhost:8000/api/submit \
   -F "program=xor" \
   -F "seed=0x1a1d" \
@@ -230,4 +228,3 @@ cat results/{task_id}/execution.log
 ## 许可证
 
 与主项目相同。
-

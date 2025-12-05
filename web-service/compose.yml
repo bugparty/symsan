@@ -2,15 +2,14 @@ version: '3.8'
 
 services:
   web-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: symsan-web-service:latest
     ports:
-      - "8001:8000"
+      - "11000:8000"
     volumes:
       - ./uploads:/app/uploads
       - ./results:/app/results
     environment:
-      - FGTEST_PATH=/app/bin/fgtest
+      - FGTEST_PATH=/appdata/bin/fgtest
+      - FGTEST_BIN_DIR=/appdata/bin
     restart: unless-stopped
     container_name: symsan-web-service

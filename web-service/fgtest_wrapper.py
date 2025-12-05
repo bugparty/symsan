@@ -5,9 +5,19 @@ fgtest 程序包装器
 import subprocess
 import json
 import os
+import logging
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional
+
+# Basic logger that emits to server stdout/stderr.
+_logger = logging.getLogger("fgtest")
+if not _logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("[%(asctime)s] %(levelname)s %(message)s")
+    handler.setFormatter(formatter)
+    _logger.addHandler(handler)
+_logger.setLevel(logging.INFO)
 
 
 def update_status(result_dir: str, status: str, error: Optional[str] = None, result: Optional[Dict] = None):
@@ -47,15 +57,14 @@ def update_status(result_dir: str, status: str, error: Optional[str] = None, res
 def build_taint_options(options: Dict) -> str:
     """构建 TAINT_OPTIONS 环境变量字符串"""
     parts = []
-    
+
+    # 默认将输入标记为 stdin
+    taint_file = options.get("taint_file", "stdin")
+    parts.append(f"taint_file={taint_file}")
+
     if "output_dir" in options:
         parts.append(f"output_dir={options['output_dir']}")
-    
-    if options.get("stdin"):
-        parts.append("taint_file=stdin")
-    elif "taint_file" in options:
-        parts.append(f"taint_file={options['taint_file']}")
-    
+
     if options.get("debug"):
         parts.append("debug=1")
     
@@ -81,7 +90,7 @@ def run_fgtest_task(
     Args:
         task_id: 任务 ID
         target_path: 目标程序路径
-        seed_input: 种子输入字符串（支持十六进制如0x1a1d或普通字符串）
+        seed_input: 种子输入字符串（原样写入目标 stdin，不再解析为文件或 hex）
         branch_meta_path: 分支元数据 JSON 路径
         traces_path: 轨迹 JSON 路径
         result_dir: 结果目录
@@ -91,15 +100,19 @@ def run_fgtest_task(
     try:
         # 更新状态为运行中
         update_status(result_dir, "running")
+        _logger.info("[%s] fgtest starting (target=%s, seed=%s, branch_meta=%s, traces=%s)", task_id, target_path, seed_input, branch_meta_path, traces_path)
         
         # 准备输出文件路径
         rewards_path = os.path.join(result_dir, "rewards.json")
         
         # 设置输出目录（如果未指定）
         if "output_dir" not in options:
-            output_dir = os.path.join(result_dir, "output")
-            os.makedirs(output_dir, exist_ok=True)
-            options["output_dir"] = output_dir
+            output_dir = Path(result_dir).resolve() / "output"
+        else:
+            output_dir_candidate = Path(options["output_dir"])
+            output_dir = output_dir_candidate if output_dir_candidate.is_absolute() else (Path(result_dir).resolve() / output_dir_candidate)
+        os.makedirs(output_dir, exist_ok=True)
+        options["output_dir"] = str(output_dir)
         
         # 构建 TAINT_OPTIONS 环境变量
         env = os.environ.copy()
@@ -108,8 +121,7 @@ def run_fgtest_task(
             env["TAINT_OPTIONS"] = taint_options
         
         # 构建 fgtest 命令
-        # seed_input 直接作为字符串参数传递给 fgtest
-        # fgtest 会自动识别是十六进制字符串、普通字符串还是文件路径
+        # seed_input 直接作为字符串参数传递给 fgtest，fgtest 会将其写入目标 stdin
         cmd = [
             fgtest_path,
             target_path,
@@ -143,22 +155,26 @@ def run_fgtest_task(
             except subprocess.TimeoutExpired:
                 log_file.write("\n\nERROR: Task timeout (1 hour)\n")
                 update_status(result_dir, "failed", error="Task execution timeout")
+                _logger.error("[%s] fgtest timeout after 1 hour", task_id)
                 return
             
             except Exception as e:
                 log_file.write(f"\n\nERROR: {str(e)}\n")
                 update_status(result_dir, "failed", error=f"Execution error: {str(e)}")
+                _logger.exception("[%s] fgtest execution error", task_id)
                 return
         
         # 检查执行结果
         if process.returncode != 0:
             error_msg = f"fgtest exited with code {process.returncode}"
             update_status(result_dir, "failed", error=error_msg)
+            _logger.error("[%s] fgtest failed: %s", task_id, error_msg)
             return
         
         # 检查结果文件是否存在
         if not os.path.exists(rewards_path):
             update_status(result_dir, "failed", error="Result file not generated")
+            _logger.error("[%s] fgtest failed: rewards.json not generated", task_id)
             return
         
         # 读取结果文件
@@ -168,14 +184,17 @@ def run_fgtest_task(
             
             # 更新状态为完成
             update_status(result_dir, "completed", result=result_data)
+            _logger.info("[%s] fgtest completed. Rewards: %s", task_id, json.dumps(result_data, ensure_ascii=False))
             
         except json.JSONDecodeError as e:
             update_status(result_dir, "failed", error=f"Invalid JSON in result file: {str(e)}")
+            _logger.error("[%s] fgtest failed: invalid JSON in rewards.json (%s)", task_id, str(e))
         except Exception as e:
             update_status(result_dir, "failed", error=f"Failed to read result file: {str(e)}")
+            _logger.exception("[%s] fgtest failed reading result file", task_id)
     
     except Exception as e:
         # 捕获所有其他异常
         error_msg = f"Unexpected error: {str(e)}"
         update_status(result_dir, "failed", error=error_msg)
-
+        _logger.exception("[%s] fgtest unexpected error", task_id)

@@ -11,7 +11,7 @@ curl -X POST http://localhost:8000/api/submit \
 ```
 
 **默认值**：
-- `seed`: `0x0402`
+- `seed`: `0402`
 - `branch_meta`: `bin/ctwm_index.json`
 
 ## API 参数说明
@@ -21,7 +21,7 @@ curl -X POST http://localhost:8000/api/submit \
 | 参数 | 类型 | 必需 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `program` | string | ✅ | - | 程序名称：`dummy` 或 `xor` |
-| `seed` | string | ❌ | `0x0402` | 种子输入（十六进制或字符串） |
+| `seed` | string | ❌ | `0402` | 写入目标 stdin 的字符串（原样写入） |
 | `branch_meta` | file | ❌ | `bin/ctwm_index.json` | 分支元数据 JSON 文件 |
 | `traces` | file | ✅ | - | 轨迹 JSON 文件 |
 | `options` | string | ❌ | `null` | JSON 配置字符串 |
@@ -35,7 +35,7 @@ curl -X POST http://localhost:8000/api/submit \
   -F "traces=@traces.json"
 ```
 
-### 场景2：自定义 seed
+### 场景2：自定义 seed（按字符串写入 stdin）
 ```bash
 curl -X POST http://localhost:8000/api/submit \
   -F "program=xor" \
@@ -93,7 +93,7 @@ if status['status'] == 'completed':
 {
   "task_id": "a1b2c3d4",
   "status": "pending",
-  "seed": "0x0402",
+  "seed": "0402",
   "program": "xor",
   "branch_meta_source": "default",
   "message": "Task submitted successfully"
@@ -105,7 +105,7 @@ if status['status'] == 'completed':
 {
   "task_id": "a1b2c3d4",
   "status": "completed",
-  "seed": "0x0402",
+  "seed": "0402",
   "program": "xor",
   "branch_meta_source": "default",
   "created_at": "2025-12-03T01:30:00",

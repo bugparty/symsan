@@ -16,7 +16,7 @@ def submit_task(program, traces_path, seed=None, branch_meta_path=None):
     Args:
         program: 程序名称 ('dummy' 或 'xor')
         traces_path: 轨迹 JSON 文件路径
-        seed: 可选，种子字符串，默认为 0x0402
+        seed: 可选，写入 stdin 的种子字符串，默认为 "0402"
         branch_meta_path: 可选，branch metadata 文件路径，默认使用 bin/ctwm_index.json
     """
     url = f"{BASE_URL}/api/submit"

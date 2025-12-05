@@ -221,49 +221,82 @@ static const char* answer_to_str(ModelTrace::Answer a) {
 
 static bool load_branch_metadata(const std::string &path) {
   std::ifstream in(path);
-  if (!in) return false;
+  if (!in) {
+    fprintf(stderr, "[fgtest] failed to open branch metadata: %s\n", path.c_str());
+    return false;
+  }
   nlohmann::json j;
-  in >> j;
-  if (!j.contains("branches")) return false;
-  branch_count_meta = j["branches"].size();
+  try {
+    in >> j;
+  } catch (const std::exception &e) {
+    fprintf(stderr, "[fgtest] failed to parse branch metadata JSON (%s): %s\n",
+            path.c_str(), e.what());
+    return false;
+  }
+  if (!j.contains("branches") || !j["branches"].is_array()) {
+    fprintf(stderr, "[fgtest] branch metadata missing \"branches\" array: %s\n", path.c_str());
+    return false;
+  }
+  size_t loaded = 0;
   for (auto &b : j["branches"]) {
-    if (!b.contains("line") || !b.contains("symSanId")) continue;
+    if (!b.contains("line") || !b.contains("symSanId")) {
+      fprintf(stderr, "[fgtest] skipping branch entry without line/symSanId\n");
+      continue;
+    }
     BranchMeta bm;
     bm.line = b["line"];
     bm.symSanId = b["symSanId"];
     line_to_branch[bm.line] = bm;
     symSanId_to_line[bm.symSanId] = bm.line;
+    loaded++;
   }
-  return true;
+  branch_count_meta = loaded;
+  fprintf(stderr, "[fgtest] loaded %zu branch entries from %s\n", loaded, path.c_str());
+  return loaded > 0;
 }
 
 static bool parse_model_traces(const std::string &path,
                                int &target_line,
                                std::vector<ModelTrace> &traces) {
   std::ifstream in(path);
-  if (!in) return false;
+  if (!in) {
+    fprintf(stderr, "[fgtest] failed to open traces file: %s\n", path.c_str());
+    return false;
+  }
   nlohmann::json j;
-  in >> j;
+  try {
+    in >> j;
+  } catch (const std::exception &e) {
+    fprintf(stderr, "[fgtest] failed to parse traces JSON (%s): %s\n", path.c_str(), e.what());
+    return false;
+  }
   if (j.contains("target") && j["target"].contains("line")) {
     target_line = j["target"]["line"];
   } else {
     target_line = 0;
   }
 
-  if (!j.contains("traces")) return false;
+  if (!j.contains("traces") || !j["traces"].is_array()) {
+    fprintf(stderr, "[fgtest] traces JSON missing \"traces\" array: %s\n", path.c_str());
+    return false;
+  }
+  size_t total_steps = 0;
   for (auto &t : j["traces"]) {
     ModelTrace mt;
     std::string ans = t.value("answer", "unknown");
     mt.answer = parse_answer(ans);
-    for (auto &s : t["steps"]) {
+    for (auto &s : t["steps"]) { // tolerate missing steps field; implicit empty
       ModelStep st;
       st.line = s.value("line", 0);
       std::string dir = s.value("dir", "F");
       st.is_true = (dir == "T" || dir == "t" || dir == "true" || dir == "1");
       mt.steps.push_back(st);
+      total_steps++;
     }
     traces.push_back(std::move(mt));
   }
+  fprintf(stderr, "[fgtest] parsed %zu traces (target_line=%d, total_steps=%zu) from %s\n",
+          traces.size(), target_line, total_steps, path.c_str());
   return true;
 }
 
@@ -519,61 +552,15 @@ evaluate_model_traces(const std::vector<ModelTrace> &traces) {
   return rows;
 }
 
-static bool parse_hex_seed(const char* hex_str, std::vector<uint8_t> &out) {
-  const char* p = hex_str;
-  // Skip "0x" prefix if present
-  if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
-    p += 2;
-  }
-  
-  size_t len = strlen(p);
-  if (len == 0) return false;
-  
-  // Hex string must have even number of characters
-  if (len % 2 != 0) {
-    fprintf(stderr, "Hex string must have even number of digits: %s\n", hex_str);
-    return false;
-  }
-  
-  out.clear();
-  out.reserve(len / 2);
-  
-  for (size_t i = 0; i < len; i += 2) {
-    char high = p[i];
-    char low = p[i + 1];
-    
-    auto hex_to_nibble = [](char c) -> int {
-      if (c >= '0' && c <= '9') return c - '0';
-      if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-      if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-      return -1;
-    };
-    
-    int h = hex_to_nibble(high);
-    int l = hex_to_nibble(low);
-    
-    if (h < 0 || l < 0) {
-      fprintf(stderr, "Invalid hex character in: %s\n", hex_str);
-      return false;
-    }
-    
-    out.push_back(static_cast<uint8_t>((h << 4) | l));
-  }
-  
-  return true;
-}
-
 int main(int argc, char* const argv[]) {
 
   if (argc != 6) {
-    fprintf(stderr, "Usage: %s target input branch_meta.json traces.json rewards_out.json\n", argv[0]);
+    fprintf(stderr, "Usage: %s target seed_string branch_meta.json traces.json rewards_out.json\n", argv[0]);
     fprintf(stderr, "\n");
     fprintf(stderr, "Parameters:\n");
     fprintf(stderr, "  target          - Path to the instrumented target program to test\n");
-    fprintf(stderr, "  input           - Path to seed input file OR hex string (e.g., 0x1a1d) OR plain string\n");
-    fprintf(stderr, "                     - File path: reads binary content from file\n");
-    fprintf(stderr, "                     - Hex string: 0x1a1d or 1a1d (converts to bytes)\n");
-    fprintf(stderr, "                     - Plain string: any other string (used as-is)\n");
+    fprintf(stderr, "  seed_string     - Seed data written directly to the target's stdin\n");
+    fprintf(stderr, "                     (plain string; e.g., \"0x1a1d\" is used as literal text)\n");
     fprintf(stderr, "  branch_meta.json - JSON file containing branch metadata (line -> symSanId mapping)\n");
     fprintf(stderr, "                     Format: {\"branches\": [{\"line\": N, \"symSanId\": M}, ...]}\n");
     fprintf(stderr, "  traces.json     - JSON file containing model traces to evaluate\n");
@@ -590,15 +577,15 @@ int main(int argc, char* const argv[]) {
   branch_meta_path = argv[3];
   traces_path = argv[4];
   reward_output_path = argv[5];
+  char *program = argv[1];
+  char *input = argv[2];
   if (!load_branch_metadata(branch_meta_path)) {
     fprintf(stderr, "Failed to load branch metadata from %s\n", branch_meta_path.c_str());
     exit(1);
   }
+  fprintf(stderr, "[fgtest] target=%s input=%s branch_meta=%s traces=%s rewards=%s\n",
+          program, input, branch_meta_path.c_str(), traces_path.c_str(), reward_output_path.c_str());
 
-  char *program = argv[1];
-  char *input = argv[2];
-
-  int is_stdin = 0;
   int solve_ub = 0;
   int debug = 0;
   char *options = getenv("TAINT_OPTIONS");
@@ -620,20 +607,10 @@ int main(int argc, char* const argv[]) {
       if (new_dir) {
         __output_dir = new_dir;
         __output_dir_allocated = true;
+        fprintf(stderr, "[fgtest] output_dir set to %s\n", __output_dir);
       } else {
         fprintf(stderr, "Warning: Failed to allocate memory for output_dir, using default\n");
       }
-    }
-
-    // check if input is stdin
-    char *taint_file = strstr(options, "taint_file=");
-    if (taint_file) {
-      taint_file += strlen("taint_file="); // skip "taint_file="
-      char *end = strchr(taint_file, ':');
-      if (end == NULL) end = strchr(taint_file, ' ');
-      size_t n = end == NULL? strlen(taint_file) : (size_t)(end - taint_file);
-      if (n == 5 && !strncmp(taint_file, "stdin", 5))
-        is_stdin = 1;
     }
 
     // check for debug
@@ -656,56 +633,15 @@ int main(int argc, char* const argv[]) {
   // load initial seed into queue
   Seed s0;
   struct stat st;
-  
-  // Check if input starts with "0x" or is all hex digits (hex string mode)
-  bool is_hex = (input[0] == '0' && (input[1] == 'x' || input[1] == 'X'));
-  if (!is_hex && strlen(input) > 0) {
-    // Check if it's all hex digits
-    bool all_hex = true;
-    for (const char* p = input; *p; ++p) {
-      if (!((*p >= '0' && *p <= '9') || 
-            (*p >= 'a' && *p <= 'f') || 
-            (*p >= 'A' && *p <= 'F'))) {
-        all_hex = false;
-        break;
-      }
-    }
-    // Only treat as hex if it has even number of digits and at least 2 chars
-    if (all_hex && strlen(input) >= 2 && strlen(input) % 2 == 0) {
-      is_hex = true;
-    }
+
+  // Treat input as a plain string that should be written to the target's stdin.
+  size_t len = strlen(input);
+  s0.data.resize(len);
+  if (len > 0) {
+    memcpy(s0.data.data(), input, len);
   }
-  
-  if (is_hex) {
-    // Parse as hex string
-    if (!parse_hex_seed(input, s0.data)) {
-      fprintf(stderr, "Failed to parse hex seed: %s\n", input);
-      exit(1);
-    }
-    fprintf(stderr, "Loaded hex seed: %s (%zu bytes)\n", input, s0.data.size());
-  } else {
-    // Try to open as file first
-    int input_fd = open(input, O_RDONLY);
-    if (input_fd != -1) {
-      // Successfully opened as file
-      fstat(input_fd, &st);
-      s0.data.resize(st.st_size);
-      if (read(input_fd, s0.data.data(), st.st_size) != st.st_size) {
-        fprintf(stderr, "Failed to read seed input: %s\n", strerror(errno));
-        close(input_fd);
-        exit(1);
-      }
-      close(input_fd);
-      fprintf(stderr, "Loaded seed from file: %s (%zu bytes)\n", input, s0.data.size());
-    } else {
-      // Treat as plain string
-      size_t len = strlen(input);
-      s0.data.resize(len);
-      memcpy(s0.data.data(), input, len);
-      fprintf(stderr, "Loaded string seed: %s (%zu bytes)\n", input, s0.data.size());
-    }
-  }
-  
+  fprintf(stderr, "[fgtest] loaded stdin seed string (%zu bytes)\n", s0.data.size());
+
   seed_queue.push_back(std::move(s0));
 
   // setup launcher
@@ -751,7 +687,7 @@ int main(int argc, char* const argv[]) {
       continue;
     }
 
-    if (symsan_set_input(is_stdin ? "stdin" : tmp_path) != 0) {
+    if (symsan_set_input("stdin") != 0) {
       fprintf(stderr, "Failed to set input\n");
       munmap(input_buf, input_size);
       close(fd);
@@ -907,6 +843,8 @@ int main(int argc, char* const argv[]) {
       fprintf(stderr, "Failed to parse traces from %s\n", traces_path.c_str());
       exit(1);
     }
+    fprintf(stderr, "[fgtest] evaluating %zu traces; target_line=%d; branch_meta_entries=%zu\n",
+            traces.size(), target_line, branch_count_meta);
     auto rows = evaluate_model_traces(traces);
     write_rewards(reward_output_path, rows);
   }

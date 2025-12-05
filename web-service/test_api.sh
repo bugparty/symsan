@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-API_URL="http://localhost:8000"
+API_URL="${API_URL:-http://localhost:8000}"
 
 echo "=== Testing fgtest Web Service API ==="
 echo ""
@@ -19,10 +19,10 @@ curl -s "$API_URL/" | jq .
 echo ""
 
 # 测试提交任务 - 使用所有默认值 (默认 seed 和默认 branch_meta)
-echo "3. Submit task with all defaults (seed=0x0402, branch_meta=bin/ctwm_index.json):"
+echo "3. Submit task with all defaults (seed=0402, branch_meta=bin/ctwm_index.json, program=dummy):"
 TASK_ID=$(curl -s -X POST "$API_URL/api/submit" \
-  -F "program=xor" \
-  -F "traces=@../examples/xor_traces.json" \
+  -F "program=dummy" \
+  -F "traces=@../examples/dummy_traces.json" \
   | jq -r '.task_id')
 
 echo "Task ID: $TASK_ID"
@@ -36,24 +36,24 @@ echo "4. Query task status:"
 curl -s "$API_URL/api/status/$TASK_ID" | jq .
 echo ""
 
-# 测试提交任务 - 使用自定义十六进制 seed，默认 branch_meta
-echo "5. Submit task with custom hex seed (0x1a1d), default branch_meta:"
+# 测试提交任务 - 使用自定义 seed 字符串，默认 branch_meta
+echo "5. Submit task with custom seed string (\"0x1a1d\"), default branch_meta (program=dummy):"
 TASK_ID2=$(curl -s -X POST "$API_URL/api/submit" \
-  -F "program=xor" \
+  -F "program=dummy" \
   -F "seed=0x1a1d" \
-  -F "traces=@../examples/xor_traces.json" \
+  -F "traces=@../examples/dummy_traces.json" \
   | jq -r '.task_id')
 
 echo "Task ID: $TASK_ID2"
 echo ""
 
 # 测试提交任务 - 使用普通字符串 seed 和上传的 branch_meta
-echo "6. Submit task with string seed (hello) and uploaded branch_meta:"
+echo "6. Submit task with string seed (hello) and uploaded branch_meta (program=dummy):"
 TASK_ID3=$(curl -s -X POST "$API_URL/api/submit" \
-  -F "program=xor" \
+  -F "program=dummy" \
   -F "seed=hello" \
   -F "branch_meta=@../examples/ctwm_index.json" \
-  -F "traces=@../examples/xor_traces.json" \
+  -F "traces=@../examples/dummy_traces.json" \
   | jq -r '.task_id')
 
 echo "Task ID: $TASK_ID3"
