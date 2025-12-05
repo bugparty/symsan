@@ -65,11 +65,12 @@ def download_result(task_id, output_path):
 def main():
     print("=== fgtest Web Service API 使用示例 ===\n")
     
-    # 1. 提交任务（使用默认 seed 和默认 branch_meta）
-    print("1. 提交任务（使用所有默认值）...")
+    # 1. 提交任务（使用 control_temp 程序）
+    print("1. 提交任务（control_temp 程序）...")
     result = submit_task(
-        program='xor',
-        traces_path='../examples/xor_traces.json'
+        program='control_temp',
+        traces_path='../examples/control_temp_traces.json',
+        seed='1 35 2 0'
     )
     
     task_id = result['task_id']

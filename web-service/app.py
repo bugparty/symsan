@@ -5,6 +5,8 @@ FastAPI Web Service for fgtest - 极简版本
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import os
 import uuid
 import json
@@ -50,6 +52,51 @@ FGTEST_PATH = os.environ.get("FGTEST_PATH", str((BIN_DIR / "fgtest").resolve()))
 # 创建必要的目录
 UPLOAD_DIR.mkdir(exist_ok=True)
 RESULTS_DIR.mkdir(exist_ok=True)
+
+
+# 请求验证错误处理器 - 捕获参数验证失败
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """捕获请求验证错误，输出详细信息到console"""
+    error_details = exc.errors()
+    body = await request.body()
+    logger.error(f"Validation error for {request.method} {request.url}")
+    logger.error(f"Request body: {body[:1000] if body else 'empty'}")  # 限制日志长度
+    logger.error(f"Validation errors: {json.dumps(error_details, indent=2, default=str)}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": error_details,
+            "body": body.decode('utf-8', errors='replace')[:500] if body else None
+        }
+    )
+
+
+# HTTP 异常处理器 - 捕获 HTTPException
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """捕获 HTTP 异常，输出详细信息到console"""
+    logger.error(f"HTTP {exc.status_code} for {request.method} {request.url}: {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
+
+# 全局异常处理器 - 捕获所有未处理的异常
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """捕获所有未处理的异常，输出详细信息到console"""
+    error_detail = traceback.format_exc()
+    logger.error(f"Unhandled exception for {request.method} {request.url}:\n{error_detail}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "type": type(exc).__name__,
+            "traceback": error_detail
+        }
+    )
 
 
 @app.post("/api/submit")
