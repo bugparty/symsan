@@ -20,7 +20,7 @@ curl -X POST http://localhost:8000/api/submit \
 
 | 参数 | 类型 | 必需 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `program` | string | ✅ | - | 程序名称：`dummy` 或 `xor` |
+| `program` | string | ✅ | - | 程序名称：`dummy`, `xor` 或 `control_temp` |
 | `seed` | string | ❌ | `0402` | 写入目标 stdin 的字符串（原样写入） |
 | `branch_meta` | file | ❌ | `bin/ctwm_index.json` | 分支元数据 JSON 文件 |
 | `traces` | file | ✅ | - | 轨迹 JSON 文件 |
@@ -123,7 +123,7 @@ if status['status'] == 'completed':
 ### 程序不存在
 ```json
 {
-  "detail": "Program must be 'dummy' or 'xor'"
+  "detail": "Program must be 'dummy', 'xor' or 'control_temp'"
 }
 ```
 
@@ -144,7 +144,7 @@ if status['status'] == 'completed':
 ## 准备工作
 
 在启动服务前，确保 `bin/` 目录下有：
-1. 程序二进制文件：`bin/dummy`, `bin/xor`
+1. 程序二进制文件：`bin/dummy`, `bin/xor`, `bin/control_temp`
 2. 默认元数据：`bin/ctwm_index.json`
 
 ```bash

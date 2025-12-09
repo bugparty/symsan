@@ -50,7 +50,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 提交一个新的 fgtest 任务。
 
 **参数（multipart/form-data）：**
-- `program` (必需): 选择程序，可选值 `dummy` 或 `xor`
+- `program` (必需): 选择程序，可选值 `dummy`, `xor` 或 `control_temp`
 - `seed` (可选): 写入目标 stdin 的种子字符串（原样写入，不再解析为 hex 或文件路径），默认为 `"0402"`
 - `branch_meta` (可选): 分支元数据 JSON 文件，默认使用 `bin/ctwm_index.json`
 - `traces` (必需): 轨迹 JSON 文件
