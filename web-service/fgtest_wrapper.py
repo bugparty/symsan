@@ -5,6 +5,7 @@ fgtest 程序包装器
 import subprocess
 import json
 import os
+import shutil
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -18,6 +19,17 @@ if not _logger.handlers:
     handler.setFormatter(formatter)
     _logger.addHandler(handler)
 _logger.setLevel(logging.INFO)
+
+
+def _cleanup_output_dir(result_dir: str, task_id: str):
+    """清理 output 目录以节省磁盘空间"""
+    output_dir = Path(result_dir) / "output"
+    if output_dir.exists() and output_dir.is_dir():
+        try:
+            shutil.rmtree(output_dir)
+            _logger.info("[%s] Cleaned up output directory: %s", task_id, output_dir)
+        except Exception as e:
+            _logger.warning("[%s] Failed to cleanup output directory: %s", task_id, str(e))
 
 
 def update_status(result_dir: str, status: str, error: Optional[str] = None, result: Optional[Dict] = None):
@@ -186,6 +198,9 @@ def run_fgtest_task(
             update_status(result_dir, "completed", result=result_data)
             _logger.info("[%s] fgtest completed. Rewards: %s", task_id, json.dumps(result_data, ensure_ascii=False))
             
+            # 清理 output 目录以节省磁盘空间
+            _cleanup_output_dir(result_dir, task_id)
+            
         except json.JSONDecodeError as e:
             update_status(result_dir, "failed", error=f"Invalid JSON in result file: {str(e)}")
             _logger.error("[%s] fgtest failed: invalid JSON in rewards.json (%s)", task_id, str(e))
@@ -198,3 +213,7 @@ def run_fgtest_task(
         error_msg = f"Unexpected error: {str(e)}"
         update_status(result_dir, "failed", error=error_msg)
         _logger.exception("[%s] fgtest unexpected error", task_id)
+    
+    finally:
+        # 无论成功失败，都尝试清理 output 目录
+        _cleanup_output_dir(result_dir, task_id)

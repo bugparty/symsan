@@ -21,7 +21,7 @@ from fgtest_wrapper import run_fgtest_task
 
 # 配置日志
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)

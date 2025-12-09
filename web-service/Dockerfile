@@ -19,10 +19,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
 WORKDIR /app
 
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip python3-venv \
+    apt-get install -y python3 python3-pip python3-venv curl \
     libz3-dev libgoogle-perftools-dev libboost-container-dev libprotobuf-dev \
     libc++-14-dev libc++abi-14-dev libunwind-14-dev && \
     rm -rf /var/lib/apt/lists/*
+
+# Install cloudflared
+RUN curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared && \
+    chmod +x /usr/local/bin/cloudflared
 
 COPY web-service/requirements.txt .
 RUN python3 -m venv /opt/venv && \
@@ -36,9 +40,11 @@ COPY --from=symsan-builder /work/symsan/examples/control_temp /appdata/bin/contr
 COPY --from=symsan-builder /work/symsan/examples/*ctwm_index.json /appdata/bin/
 
 COPY web-service/app.py web-service/fgtest_wrapper.py ./
+COPY web-service/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Ensure runtime directories exist
-RUN mkdir -p uploads results
+RUN mkdir -p uploads results /root/.cloudflared
 
 EXPOSE 8000
-ENTRYPOINT ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/entrypoint.sh"]

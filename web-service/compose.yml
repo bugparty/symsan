@@ -16,5 +16,8 @@ services:
     environment:
       - FGTEST_PATH=/appdata/bin/fgtest
       - FGTEST_BIN_DIR=/appdata/bin
+      - CLOUDFLARE_TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    env_file:
+      - .env
     restart: unless-stopped
     container_name: symsan-web-service
